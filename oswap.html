@@ -6,7 +6,7 @@
 <script type="text/javascript">
 
 chain_endpoint = 'https://mainnet.telos.net/'
-
+const swapcontract = 'oswapper1111'
 async function getRows(contract, table, scope) {
   const url = chain_endpoint + "v1/chain/get_table_rows";
   const data ={ code: contract,
@@ -32,9 +32,9 @@ async function poolstatus() {
   const url = chain_endpoint + "v1/chain/get_table_rows";
   try {
   while (more) {
-    const data ={ code: 'oswapper1111',
+    const data ={ code: swapcontract,
                 table: 'assetsa',
-                scope: 'oswapper1111',
+                scope: swapcontract,
                 limit: 40,
                 json: "true" };
     const response = await fetch(url, {
@@ -52,7 +52,7 @@ async function poolstatus() {
     lowerbound = dt.next_key
     
     t += (await Promise.all(dt.rows.map(async (row)=>{ 
-      bal = (await getRows(row.contract_name, 'accounts', 'oswapper1111'))
+      bal = (await getRows(row.contract_name, 'accounts', swapcontract))
         .filter((e)=>e.balance.split(' ')[1]==row.symbol)
       balance = ((bal.length > 0) ? bal[0].balance.split(' ')[0] : "0").padStart(8) + " " + row.symbol.padEnd(7);
       return `${row.token_id.toString().padStart(4)} `+
@@ -98,7 +98,7 @@ function compute_qty() {
             precision = sp[1].length
           }
           document.getElementById("send_qty").value = 
-            in_amount.replace(regex, computed_amt.toFixed(precision))
+            `${computed_amt.toFixed(precision)} ${in_match[0].split(/\s+/)[3]}`
           
         } else
 
@@ -129,26 +129,28 @@ function compute_qty() {
             precision = sp[1].length
           }
           document.getElementById("rcv_qty").value = 
-            out_amount.replace(regex, computed_amt.toFixed(precision))
-
+            `${computed_amt.toFixed(precision)} ${out_match[0].split(/\s+/)[3]}`
         }
 
 }
 
-function validate_quantity (tokenid, quantity) {
+function validate_quantity (tokenid, quantity, raise_alerts = false) {
     const re = new RegExp(`^\\s+${tokenid}.+ (\\S+)$`, 'm')
     console.log(re)
     ts = document.getElementById("tokenlist").value
     const match = ts.match(re)
     if (match == null) {
-      alert("Invalid Token ID")
+      if (raise_alerts) {alert("Invalid Token ID") }
       return null
-    }
+    } 
     asset_token = match[0].split(/\s+/)[3]
     quantity_token = quantity.split(' ')[1]
     if (asset_token != quantity_token) {
-      alert(`token name mismatch:  ${asset_token} : ${quantity_token}`)
-      return null
+      if (raise_alerts) {
+        alert(`token name mismatch:  ${asset_token} : ${quantity_token}`)
+        return null
+      }
+
     }
     console.log(match)
     return match
@@ -184,7 +186,7 @@ function addliq_trx() {
     let actions=[];
     // first action: addliqprep
     actions.push({
-      account: 'oswapper1111', name: 'addliqprep',
+      account: swapcontract, name: 'addliqprep',
       data: {
         account: '............1',
         token_id: document.getElementById("addliqtokenid").value,
@@ -195,7 +197,7 @@ function addliq_trx() {
     })
     
     match = validate_quantity(document.getElementById("addliqtokenid").value,
-                              document.getElementById("addliqqty").value);
+                              document.getElementById("addliqqty").value, true);
     if (match == null) {
       return { actions: [] }
     }
@@ -204,7 +206,7 @@ function addliq_trx() {
       account: match[1], name: 'transfer',
       data: {
         from: '............1',
-        to: 'oswapper1111',
+        to: swapcontract,
         quantity: document.getElementById("addliqqty").value,
         memo: "ff"
       },
@@ -216,7 +218,7 @@ function addliq_trx() {
 function withdraw_trx() {
     let actions=[];
     actions.push({
-      account: 'oswapper1111', name: 'withdraw',
+      account: swapcontract, name: 'withdraw',
       data: {
         account: '............1',
         token_id: document.getElementById("addliqtokenid").value,
@@ -248,7 +250,7 @@ function exchange_trx() {
     in_is_exact = document.getElementById("in_exact_checked").checked
     if (in_is_exact) {
       actions.push({
-        account: 'oswapper1111', 
+        account: swapcontract, 
         name: 'exprepfrom',
         data: {
           sender: document.getElementById("sender").value,
@@ -262,7 +264,7 @@ function exchange_trx() {
       })
     } else { // out is exact
       actions.push({
-        account: 'oswapper1111', 
+        account: swapcontract, 
         name: 'exprepto',
         data: {
           sender: document.getElementById("sender").value,
@@ -276,12 +278,12 @@ function exchange_trx() {
       })
     }
     match = validate_quantity(document.getElementById("out_token_id").value,
-                              document.getElementById("rcv_qty").value);
+                              document.getElementById("rcv_qty").value, true);
     if (match == null) {
       return {actions: [] }
     }
     match = validate_quantity(document.getElementById("in_token_id").value,
-                              document.getElementById("send_qty").value);
+                              document.getElementById("send_qty").value, true);
     if (match == null) {
       return {actions: [] }
     }
@@ -303,7 +305,7 @@ function exchange_trx() {
       account: match[1], name: 'transfer',
       data: {
         from: document.getElementById("sender").value,
-        to: 'oswapper1111',
+        to: swapcontract,
         quantity: quantity,
         memo: "ff"
       },
@@ -325,10 +327,12 @@ async function update_assets() {
   document.getElementById("tokenlist").value = await poolstatus();
 }
 
-function disable_exch_tol() {
-    document.getElementById("exch_tol").disabled = 
-      document.getElementById("in_exact_checked").checked
-      
+function disable_fields() {
+    in_exact = document.getElementById("in_exact_checked").checked
+    document.getElementById("exch_tol").disabled = in_exact
+    //document.getElementById("rcv_qty").disabled = in_exact
+    //document.getElementById("send_qty").disabled = !in_exact
+        
     // quick hack
     compute_qty()  
 }
@@ -343,16 +347,22 @@ document.getElementById("exchange_QR").onclick = function(){exchangeQR()};
 // cross-couple input_exact and output_exact radio buttons
 document.getElementById("in_exact_checked").onchange = function(){
   document.getElementById("out_estimated_checked").checked = true 
-  disable_exch_tol() };
+  disable_fields() };
 document.getElementById("in_estimated_checked").onchange = function(){
   document.getElementById("out_exact_checked").checked = true 
-  disable_exch_tol()};
+  disable_fields()};
 document.getElementById("out_exact_checked").onchange = function(){
   document.getElementById("in_estimated_checked").checked = true
-  disable_exch_tol() };
+  disable_fields() };
 document.getElementById("out_estimated_checked").onchange = function(){
   document.getElementById("in_exact_checked").checked = true 
-  disable_exch_tol() };
+  disable_fields() };
+
+// update on token quantity changes
+document.getElementById("in_token_id").onchange = function(){compute_qty()}
+document.getElementById("send_qty").onchange = function(){compute_qty()}
+document.getElementById("out_token_id").onchange = function(){compute_qty()}
+document.getElementById("rcv_qty").onchange = function(){compute_qty()}
 
 })
 </script>
@@ -394,7 +404,10 @@ Reference document <a href="https://docs.google.com/document/d/1bTmC7q4ZZ5mRnV9l
 <br><br>
 <div>
 Assets in pool
-<input type="button" id="refresh_assets" value="Refresh" class="button"><br>
+<input type="button" id="refresh_assets" value="Refresh" class="button"
+ style="margin-left: 20px">
+<input type="button" id="new_asset" value="New Asset" class="button"
+  style="margin-left: 20px"><br>
 <textarea id="tokenlist" rows="10" cols = "50" name="tokenlist" 
            value="" style="vertical-align:middle;"> </textarea>
 </div>
