@@ -73,11 +73,14 @@ function compute_qty() {
           // floating point calculation, exact out
           in_token = document.getElementById("in_token_id").value,
           out_token = document.getElementById("out_token_id").value,
-          in_match = validate_quantity(in_token, document.getElementById("send_qty").value);
-          out_match = validate_quantity(out_token, document.getElementById("rcv_qty").value);
+          in_match = set_token(in_token, "send_token");
+          out_match = set_token(out_token, "rcv_token");
           out_bal_before = parseFloat(out_match[0].split(/\s+/)[2])
           out_amount = parseFloat(document.getElementById("rcv_qty").value)
           out_bal_after = out_bal_before - out_amount
+          if (out_bal_after <= 0) {
+            alert("insufficient balance in pool")
+          }
           lc = Math.log(out_bal_after/out_bal_before)
           out_weight = parseFloat(out_match[0].split(/\s+/)[4].slice(3))
           in_weight = parseFloat(in_match[0].split(/\s+/)[4].slice(3))
@@ -89,16 +92,12 @@ function compute_qty() {
           computed_amt = in_bal_after - in_bal_before
           console.log(`computed input ${in_bal_before} + ${computed_amt} = ${in_bal_after}`)
           
-          in_amount = document.getElementById("send_qty").value
-          const regex = /[0-9.]+/
-          const amt = in_amount.match(regex)[0]
           precision = 0
-          sp = amt.split('.')
+          sp = in_match[0].split(/\s+/)[2].split('.')
           if (sp.length == 2) {
             precision = sp[1].length
           }
-          document.getElementById("send_qty").value = 
-            `${computed_amt.toFixed(precision)} ${in_match[0].split(/\s+/)[3]}`
+          document.getElementById("send_qty").value = computed_amt.toFixed(precision)
           
         } else
 
@@ -106,8 +105,8 @@ function compute_qty() {
           // floating point calculation, exact in
           in_token = document.getElementById("in_token_id").value,
           out_token = document.getElementById("out_token_id").value,
-          in_match = validate_quantity(in_token, document.getElementById("send_qty").value);
-          out_match = validate_quantity(out_token, document.getElementById("rcv_qty").value);
+          in_match = set_token(in_token, "send_token");
+          out_match = set_token(out_token, "rcv_token");
           in_bal_before = parseFloat(in_match[0].split(/\s+/)[2])
           in_amount = parseFloat(document.getElementById("send_qty").value)
           in_bal_after = in_bal_before + in_amount
@@ -119,24 +118,19 @@ function compute_qty() {
           out_bal_after = out_bal_before * Math.exp(lnc)
           computed_amt = out_bal_before - out_bal_after
           console.log(`computed output ${out_bal_before} - ${computed_amt} = ${out_bal_after}`)
-          
-          out_amount = document.getElementById("rcv_qty").value
-          const regex = /[0-9.]+/
-          const amt = out_amount.match(regex)[0]
+
           precision = 0
-          sp = amt.split('.')
+          sp = out_match[0].split(/\s+/)[2].split('.')
           if (sp.length == 2) {
             precision = sp[1].length
           }
-          document.getElementById("rcv_qty").value = 
-            `${computed_amt.toFixed(precision)} ${out_match[0].split(/\s+/)[3]}`
+          document.getElementById("rcv_qty").value = computed_amt.toFixed(precision)
         }
 
 }
 
-function validate_quantity (tokenid, quantity, raise_alerts = false) {
+function set_token (tokenid, token_field_id, raise_alerts = false) {
     const re = new RegExp(`^\\s+${tokenid}.+ (\\S+)$`, 'm')
-    console.log(re)
     ts = document.getElementById("tokenlist").value
     const match = ts.match(re)
     if (match == null) {
@@ -144,16 +138,14 @@ function validate_quantity (tokenid, quantity, raise_alerts = false) {
       return null
     } 
     asset_token = match[0].split(/\s+/)[3]
-    quantity_token = quantity.split(' ')[1]
-    if (asset_token != quantity_token) {
-      if (raise_alerts) {
-        alert(`token name mismatch:  ${asset_token} : ${quantity_token}`)
-        return null
-      }
-
-    }
+    document.getElementById(token_field_id).value = asset_token
+    // TODO set decimals?
     console.log(match)
     return match
+}
+
+function set_liq_token() {
+    set_token(document.getElementById("addliqtokenid").value, "addliqtoken")
 }
 
 async function makeQR(transaction) {
@@ -185,19 +177,20 @@ function clearQR() {
 function addliq_trx() {
     let actions=[];
     // first action: addliqprep
+    source = liqsource=="" ? '............1' : liqsource
     actions.push({
       account: swapcontract, name: 'addliqprep',
       data: {
-        account: '............1',
+        account: source,
         token_id: document.getElementById("addliqtokenid").value,
         amount: document.getElementById("addliqqty").value,
         weight: document.getElementById("addliqwt").value
       },
-      authorization: [{actor: '............1', permission: "active"}]
+      authorization: [{actor: source, permission: "active"}]
     })
     
-    match = validate_quantity(document.getElementById("addliqtokenid").value,
-                              document.getElementById("addliqqty").value, true);
+    match = set_token(document.getElementById("addliqtokenid").value,
+                              "addliqtoken", true);
     if (match == null) {
       return { actions: [] }
     }
@@ -205,12 +198,12 @@ function addliq_trx() {
     actions.push({
       account: match[1], name: 'transfer',
       data: {
-        from: '............1',
+        from: liqsource,
         to: swapcontract,
         quantity: document.getElementById("addliqqty").value,
-        memo: "ff"
+        memo: "add liquidity, ${swapcontract} pool"
       },
-      authorization: [{actor: '............1', permission: "active"}]
+      authorization: [{actor: liqsource, permission: "active"}]
     })
   return { actions: actions }
 }
@@ -220,7 +213,7 @@ function withdraw_trx() {
     actions.push({
       account: swapcontract, name: 'withdraw',
       data: {
-        account: '............1',
+        account: liqsource,
         token_id: document.getElementById("addliqtokenid").value,
         amount: document.getElementById("addliqqty").value,
         weight: document.getElementById("addliqwt").value
@@ -247,47 +240,48 @@ function addliqQR() {
 function exchange_trx() {
     let actions=[];
     // first action: exprepfrom or exprepto
+    send_acct = document.getElementById("sender").value
+    if (send_acct=="") { send_acct = '............1' }
     in_is_exact = document.getElementById("in_exact_checked").checked
     if (in_is_exact) {
       actions.push({
         account: swapcontract, 
         name: 'exprepfrom',
         data: {
-          sender: document.getElementById("sender").value,
+          sender: send_acct,
           recipient: document.getElementById("recip").value,
           in_token_id: document.getElementById("in_token_id").value,
           out_token_id: document.getElementById("out_token_id").value,
           in_amount: document.getElementById("send_qty").value,
           memo: ' ' // document.getElementById("exch_memo").value
         },
-        authorization: [{actor: document.getElementById("sender").value, permission: "active"}]
+        authorization: [{actor: send_acct, permission: "active"}]
       })
     } else { // out is exact
       actions.push({
         account: swapcontract, 
         name: 'exprepto',
         data: {
-          sender: document.getElementById("sender").value,
+          sender: send_acct,
           recipient: document.getElementById("recip").value,
           in_token_id: document.getElementById("in_token_id").value,
           out_token_id: document.getElementById("out_token_id").value,
           out_amount: document.getElementById("rcv_qty").value,
           memo: ' ' // document.getElementById("exch_memo").value
         },
-        authorization: [{actor: document.getElementById("sender").value, permission: "active"}]
+        authorization: [{actor: send_acct, permission: "active"}]
       })
     }
-    match = validate_quantity(document.getElementById("out_token_id").value,
-                              document.getElementById("rcv_qty").value, true);
+    match = set_token(document.getElementById("out_token_id").value,
+                              "rcv_token", true);
     if (match == null) {
       return {actions: [] }
     }
-    match = validate_quantity(document.getElementById("in_token_id").value,
-                              document.getElementById("send_qty").value, true);
+    match = set_token(document.getElementById("in_token_id").value,
+                              "send_token", true);
     if (match == null) {
       return {actions: [] }
     }
-    console.log(match[0].split(/\s+/))
     // second action: token transfer
     quantity = document.getElementById("send_qty").value
     if(!document.getElementById("exch_tol").disabled) {
@@ -304,12 +298,12 @@ function exchange_trx() {
     actions.push({
       account: match[1], name: 'transfer',
       data: {
-        from: document.getElementById("sender").value,
+        from: send_acct,
         to: swapcontract,
         quantity: quantity,
-        memo: "ff"
+        memo: `swap for ${document.getElementById("rcv_qty").value}`
       },
-      authorization: [{actor: document.getElementById("sender").value, permission: "active"}]
+      authorization: [{actor: send_acct, permission: "active"}]
     })
     
     return { actions: actions }
@@ -317,7 +311,7 @@ function exchange_trx() {
   
 function exchangeQR() {
   compute_qty()
-  alert("computed")
+  //alert("computed")
   transaction = exchange_trx()
   makeQR(transaction)
 }
@@ -330,8 +324,8 @@ async function update_assets() {
 function disable_fields() {
     in_exact = document.getElementById("in_exact_checked").checked
     document.getElementById("exch_tol").disabled = in_exact
-    //document.getElementById("rcv_qty").disabled = in_exact
-    //document.getElementById("send_qty").disabled = !in_exact
+    document.getElementById("rcv_qty").disabled = in_exact
+    document.getElementById("send_qty").disabled = !in_exact
         
     // quick hack
     compute_qty()  
@@ -364,6 +358,7 @@ document.getElementById("send_qty").onchange = function(){compute_qty()}
 document.getElementById("out_token_id").onchange = function(){compute_qty()}
 document.getElementById("rcv_qty").onchange = function(){compute_qty()}
 
+document.getElementById("addliqtokenid").onchange = function(){set_liq_token()}
 })
 </script>
 
@@ -418,10 +413,15 @@ Assets in pool
   <label for="withdraw_checked" class="radiolabelhoriz">Withdraw</label>
   <input type="radio" id="withdraw_checked" name="liquidity" value="withdraw"> <br><br>
 
+  <label for="liqsource">Source account:</label>
+  <input type="text" id="liqsource" name="source" value="" > <br>
   <label for="addliqtokenid">Token ID:</label>
   <input type="text" id="addliqtokenid" name="addliqtokenid" value="0" > <br>
   <label for="addliqqty">Quantity:</label>
-  <input type="text" id="addliqqty" name="addliqqty" value="0.0000 TOKENS" > <br>
+  <input type="text" id="addliqqty" name="addliqqty" value="0.0000"
+         style="width: 6em" > 
+  <input type="text" id="addliqtoken" name="alt" value="TOKEN"
+         style="width: 6em" disabled> <br>
   <label for="addliqwt">Weight:</label>
   <input type="text" id="addliqwt" name="addliqwt" value="0.00" > <br><br>
   <div id="button-wrapper">
@@ -439,7 +439,9 @@ Assets in pool
   <label for="in_token_id">Token ID:</label>
   <input type="text" id="in_token_id" name="sendtokenid" value="0" > <br>
   <label for="send_qty">Quantity:</label>
-  <input type="text" id="send_qty" name="send" value="0.0000 TOKENS" > <br>
+  <input type="text" id="send_qty" name="send" value="0.0000" style="width: 6em" > 
+  <input type="text" id="send_token" name="sendt" value="TOKEN"
+         style="width: 6em" disabled> <br>
   <label for="exch_tol">Exchg rate tolerance %:</label>
   <input type="text" id="exch_tol" name="sendtol" value="5" disabled > <br>
  
@@ -452,7 +454,9 @@ Assets in pool
   <label for="out_token_id">Token ID:</label>
   <input type="text" id="out_token_id" name="rcvtokenid" value="0" > <br>
   <label for="rcv_qty">Quantity:</label>
-  <input type="text" id="rcv_qty" name="rcv" value="0.0000 TOKENS" > <br>
+  <input type="text" id="rcv_qty" name="rcv" value="0.0000" style="width: 6em" > 
+  <input type="text" id="rcv_token" name="rcvt" value="TOKEN"
+         style="width: 6em" disabled> <br>
   <label for="out_exact_checked"><b>Output amount </b> Exact</label>
   <input type="radio" id="out_exact_checked" name="out_exact" value="add">
   <label for="out_estimated_checked" class="radiolabelhoriz">Estimated</label>
