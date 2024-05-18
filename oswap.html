@@ -362,7 +362,7 @@ function exchange_trx() {
           out_token_id: document.getElementById("out_token_id").value,
           in_amount: `${document.getElementById("send_qty").value} ${
             document.getElementById("send_token").value}`,
-          memo: ' ' // document.getElementById("exch_memo").value
+          memo: document.getElementById("deliv_memo").value
         },
         authorization: [{actor: send_acct, permission: "active"}]
       })
@@ -376,7 +376,7 @@ function exchange_trx() {
           in_token_id: document.getElementById("in_token_id").value,
           out_token_id: document.getElementById("out_token_id").value,
           out_amount: document.getElementById("rcv_qty").value,
-          memo: ' ' // document.getElementById("exch_memo").value
+          memo: document.getElementById("deliv_memo").value
         },
         authorization: [{actor: send_acct, permission: "active"}]
       })
@@ -430,6 +430,11 @@ function exchangemsigQR() {
   makeMsigProposeQR(transaction, document.getElementById("sender").value, "active");
 }
 
+function new_asset_redirect() {
+  if (window.confirm('New Asset window not implemented; use createasseta action. Click "ok" to visit block explorer')) {
+    window.location.href='https://eosauthority.com/account/oswapper1111?network=telos&action=createasseta&mode=contract&sub=actions';
+  };
+}
 
 async function update_assets() {
   document.getElementById("tokenlist").value = await poolstatus();
@@ -453,6 +458,7 @@ document.getElementById("refresh_assets").onclick = function(){update_assets()};
 document.getElementById("exchange_QR").onclick = function(){exchangeQR()};
 document.getElementById("exchange_msig_propose_QR").onclick = function(){exchangemsigQR()};
 document.getElementById("addliq_msig_propose_QR").onclick = function(){addliqmsigQR()};
+document.getElementById("new_asset").onclick = function(){new_asset_redirect()}
 
 // cross-couple input_exact and output_exact radio buttons
 document.getElementById("in_exact_checked").onchange = function(){
@@ -542,6 +548,8 @@ Assets in pool
   <input type="radio" id="in_estimated_checked" name="in_exact" value="withdraw"> <br><br>
   <label for="recip">Recipient's account:</label>
   <input type="text" id="recip" name="rcv" value="" > <br>
+  <label for="deliv_memo">Delivery memo:</label>
+  <input type="text" id="deliv_memo" name="deliv" value="" > <br>
   <label for="out_token_id">Token ID:</label>
   <input type="text" id="out_token_id" name="rcvtokenid" value="0" > <br>
   <label for="rcv_qty">Quantity:</label>
