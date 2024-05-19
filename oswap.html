@@ -4,6 +4,8 @@
 <meta charset="utf-8"/>
 
 <script type="text/javascript">
+function $(id) { return document.getElementById(id); };
+
 
 chain_endpoint = 'https://mainnet.telos.net'
 const swapcontract = 'oswapper1111'
@@ -68,17 +70,17 @@ async function poolstatus() {
 }
 
 function compute_qty() {
-    in_is_exact = document.getElementById("in_exact_checked").checked
+    in_is_exact = $("in_exact_checked").checked
 
      if (!in_is_exact)
         {
           // floating point calculation, exact out
-          in_token = document.getElementById("in_token_id").value,
-          out_token = document.getElementById("out_token_id").value,
+          in_token = $("in_token_id").value,
+          out_token = $("out_token_id").value,
           in_match = set_token(in_token, "send_token");
           out_match = set_token(out_token, "rcv_token");
           out_bal_before = parseFloat(out_match[0].split(/\s+/)[2])
-          out_amount = parseFloat(document.getElementById("rcv_qty").value)
+          out_amount = parseFloat($("rcv_qty").value)
           out_bal_after = out_bal_before - out_amount
           if (out_bal_after <= 0) {
             alert("insufficient balance in pool")
@@ -99,18 +101,18 @@ function compute_qty() {
           if (sp.length == 2) {
             precision = sp[1].length
           }
-          document.getElementById("send_qty").value = computed_amt.toFixed(precision)
+          $("send_qty").value = computed_amt.toFixed(precision)
           
         } else
 
       {
           // floating point calculation, exact in
-          in_token = document.getElementById("in_token_id").value,
-          out_token = document.getElementById("out_token_id").value,
+          in_token = $("in_token_id").value,
+          out_token = $("out_token_id").value,
           in_match = set_token(in_token, "send_token");
           out_match = set_token(out_token, "rcv_token");
           in_bal_before = parseFloat(in_match[0].split(/\s+/)[2])
-          in_amount = parseFloat(document.getElementById("send_qty").value)
+          in_amount = parseFloat($("send_qty").value)
           in_bal_after = in_bal_before + in_amount
           lc = Math.log(in_bal_after/in_bal_before)
           out_weight = parseFloat(out_match[0].split(/\s+/)[4].slice(3))
@@ -126,28 +128,28 @@ function compute_qty() {
           if (sp.length == 2) {
             precision = sp[1].length
           }
-          document.getElementById("rcv_qty").value = computed_amt.toFixed(precision)
+          $("rcv_qty").value = computed_amt.toFixed(precision)
         }
 
 }
 
 function set_token (tokenid, token_field_id, raise_alerts = false) {
     const re = new RegExp(`^\\s+${tokenid}.+ (\\S+)$`, 'm')
-    ts = document.getElementById("tokenlist").value
+    ts = $("tokenlist").value
     const match = ts.match(re)
     if (match == null) {
       if (raise_alerts) {alert("Invalid Token ID") }
       return null
     } 
     asset_token = match[0].split(/\s+/)[3]
-    document.getElementById(token_field_id).value = asset_token
+    $(token_field_id).value = asset_token
     // TODO set decimals?
     console.log(match)
     return match
 }
 
 function set_liq_token() {
-    set_token(document.getElementById("addliqtokenid").value, "addliqtoken")
+    set_token($("addliqtokenid").value, "addliqtoken")
 }
 
 async function makeQR(transaction) {
@@ -268,21 +270,21 @@ function clearQR() {
 function addliq_trx() {
     let actions=[];
     // first action: addliqprep
-    liqsource = document.getElementById("liqsource").value
+    liqsource = $("liqsource").value
     source = liqsource=="" ? '............1' : liqsource
     actions.push({
       account: swapcontract, name: 'addliqprep',
       data: {
         account: source,
-        token_id: document.getElementById("addliqtokenid").value,
-        amount: `${document.getElementById("addliqqty").value} ${
-                 document.getElementById("addliqtoken").value}`,
-        weight: document.getElementById("addliqwt").value
+        token_id: $("addliqtokenid").value,
+        amount: `${$("addliqqty").value} ${
+                 $("addliqtoken").value}`,
+        weight: $("addliqwt").value
       },
       authorization: [{actor: source, permission: "active"}]
     })
     
-    match = set_token(document.getElementById("addliqtokenid").value,
+    match = set_token($("addliqtokenid").value,
                               "addliqtoken", true);
     if (match == null) {
       return { actions: [] }
@@ -293,8 +295,8 @@ function addliq_trx() {
       data: {
         from: liqsource,
         to: swapcontract,
-        quantity: `${document.getElementById("addliqqty").value} ${
-                 document.getElementById("addliqtoken").value}`,
+        quantity: `${$("addliqqty").value} ${
+                 $("addliqtoken").value}`,
         memo: `add liquidity, ${swapcontract} pool`
       },
       authorization: [{actor: liqsource, permission: "active"}]
@@ -303,16 +305,16 @@ function addliq_trx() {
 }
 // ACTION withdraw(name account, uint64_t token_id, string amount, float weight);
 function withdraw_trx() {
-    liqsource = document.getElementById("liqsource").value
+    liqsource = $("liqsource").value
     let actions=[];
     actions.push({
       account: swapcontract, name: 'withdraw',
       data: {
         account: liqsource,
-        token_id: document.getElementById("addliqtokenid").value,
-        amount: `${document.getElementById("addliqqty").value} ${
-                 document.getElementById("addliqtoken").value}`,
-        weight: document.getElementById("addliqwt").value
+        token_id: $("addliqtokenid").value,
+        amount: `${$("addliqqty").value} ${
+                 $("addliqtoken").value}`,
+        weight: $("addliqwt").value
       },
       authorization: [{actor: '............1', permission: "active"}]
     })
@@ -321,7 +323,7 @@ function withdraw_trx() {
 
 function addliqQR() {
   var transaction
-  if(document.getElementById("addliq_checked").checked) {
+  if($("addliq_checked").checked) {
     console.log('adding liquidity')
     transaction = addliq_trx()
   } else {
@@ -333,14 +335,14 @@ function addliqQR() {
 
 function addliqmsigQR() {
   var transaction
-  if(document.getElementById("addliq_checked").checked) {
+  if($("addliq_checked").checked) {
     console.log('adding liquidity')
     transaction = addliq_trx()
   } else {
     console.log('withdrawing liquidity')
     transaction = withdraw_trx()
   }
-  makeMsigProposeQR(transaction, document.getElementById("liqsource").value, "active");
+  makeMsigProposeQR(transaction, $("liqsource").value, "active");
 }
 
 //ACTION exprepfrom( name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
@@ -348,21 +350,20 @@ function addliqmsigQR() {
 function exchange_trx() {
     let actions=[];
     // first action: exprepfrom or exprepto
-    send_acct = document.getElementById("sender").value
+    send_acct = $("sender").value
     if (send_acct=="") { send_acct = '............1' }
-    in_is_exact = document.getElementById("in_exact_checked").checked
+    in_is_exact = $("in_exact_checked").checked
     if (in_is_exact) {
       actions.push({
         account: swapcontract, 
         name: 'exprepfrom',
         data: {
           sender: send_acct,
-          recipient: document.getElementById("recip").value,
-          in_token_id: document.getElementById("in_token_id").value,
-          out_token_id: document.getElementById("out_token_id").value,
-          in_amount: `${document.getElementById("send_qty").value} ${
-            document.getElementById("send_token").value}`,
-          memo: document.getElementById("deliv_memo").value
+          recipient: $("recip").value,
+          in_token_id: $("in_token_id").value,
+          out_token_id: $("out_token_id").value,
+          in_amount: `${$("send_qty").value} ${$("send_token").value}`,
+          memo: $("deliv_memo").value
         },
         authorization: [{actor: send_acct, permission: "active"}]
       })
@@ -372,28 +373,28 @@ function exchange_trx() {
         name: 'exprepto',
         data: {
           sender: send_acct,
-          recipient: document.getElementById("recip").value,
-          in_token_id: document.getElementById("in_token_id").value,
-          out_token_id: document.getElementById("out_token_id").value,
-          out_amount: document.getElementById("rcv_qty").value,
-          memo: document.getElementById("deliv_memo").value
+          recipient: $("recip").value,
+          in_token_id: $("in_token_id").value,
+          out_token_id: $("out_token_id").value,
+          out_amount: `${$("rcv_qty").value} ${$("rcv_token").value}`,
+          memo: $("deliv_memo").value
         },
         authorization: [{actor: send_acct, permission: "active"}]
       })
     }
-    match = set_token(document.getElementById("out_token_id").value,
+    match = set_token($("out_token_id").value,
                               "rcv_token", true);
     if (match == null) {
       return {actions: [] }
     }
-    match = set_token(document.getElementById("in_token_id").value,
+    match = set_token($("in_token_id").value,
                               "send_token", true);
     if (match == null) {
       return {actions: [] }
     }
     // second action: token transfer
-    quantity = document.getElementById("send_qty").value
-    if(!document.getElementById("exch_tol").disabled) {
+    quantity = $("send_qty").value
+    if(!$("exch_tol").disabled) {
       const regex = /[0-9.]+/
       const amt = quantity.match(regex)[0]
       precision = 0
@@ -401,7 +402,7 @@ function exchange_trx() {
       if (sp.length == 2) {
         precision = sp[1].length
       }
-      flt = parseFloat(amt)*(100.0 + parseFloat(document.getElementById("exch_tol").value))/100.0
+      flt = parseFloat(amt)*(100.0 + parseFloat($("exch_tol").value))/100.0
       quantity = quantity.replace(regex, flt.toFixed(precision))
     }
     actions.push({
@@ -409,8 +410,8 @@ function exchange_trx() {
       data: {
         from: send_acct,
         to: swapcontract,
-        quantity: `${quantity} ${document.getElementById("send_token").value}`,
-        memo: `swap for ${document.getElementById("rcv_qty").value} ${document.getElementById("rcv_token").value}`
+        quantity: `${quantity} ${$("send_token").value}`,
+        memo: `swap for ${$("rcv_qty").value} ${$("rcv_token").value}`
       },
       authorization: [{actor: send_acct, permission: "active"}]
     })
@@ -427,7 +428,7 @@ function exchangeQR() {
 function exchangemsigQR() {
   compute_qty()
   transaction = exchange_trx()
-  makeMsigProposeQR(transaction, document.getElementById("sender").value, "active");
+  makeMsigProposeQR(transaction, $("sender").value, "active");
 }
 
 function new_asset_redirect() {
@@ -437,14 +438,14 @@ function new_asset_redirect() {
 }
 
 async function update_assets() {
-  document.getElementById("tokenlist").value = await poolstatus();
+  $("tokenlist").value = await poolstatus();
 }
 
 function disable_fields() {
-    in_exact = document.getElementById("in_exact_checked").checked
-    document.getElementById("exch_tol").disabled = in_exact
-    document.getElementById("rcv_qty").disabled = in_exact
-    document.getElementById("send_qty").disabled = !in_exact
+    in_exact = $("in_exact_checked").checked
+    $("exch_tol").disabled = in_exact
+    $("rcv_qty").disabled = in_exact
+    $("send_qty").disabled = !in_exact
         
     // quick hack
     compute_qty()  
@@ -453,34 +454,34 @@ function disable_fields() {
 document.addEventListener("DOMContentLoaded", async function(event) {
 
 await update_assets()
-document.getElementById("addliq_QR").onclick = function(){addliqQR()};
-document.getElementById("refresh_assets").onclick = function(){update_assets()};
-document.getElementById("exchange_QR").onclick = function(){exchangeQR()};
-document.getElementById("exchange_msig_propose_QR").onclick = function(){exchangemsigQR()};
-document.getElementById("addliq_msig_propose_QR").onclick = function(){addliqmsigQR()};
-document.getElementById("new_asset").onclick = function(){new_asset_redirect()}
+$("addliq_QR").onclick = function(){addliqQR()};
+$("refresh_assets").onclick = function(){update_assets()};
+$("exchange_QR").onclick = function(){exchangeQR()};
+$("exchange_msig_propose_QR").onclick = function(){exchangemsigQR()};
+$("addliq_msig_propose_QR").onclick = function(){addliqmsigQR()};
+$("new_asset").onclick = function(){new_asset_redirect()}
 
 // cross-couple input_exact and output_exact radio buttons
-document.getElementById("in_exact_checked").onchange = function(){
-  document.getElementById("out_estimated_checked").checked = true 
+$("in_exact_checked").onchange = function(){
+  $("out_estimated_checked").checked = true 
   disable_fields() };
-document.getElementById("in_estimated_checked").onchange = function(){
-  document.getElementById("out_exact_checked").checked = true 
+$("in_estimated_checked").onchange = function(){
+  $("out_exact_checked").checked = true 
   disable_fields()};
-document.getElementById("out_exact_checked").onchange = function(){
-  document.getElementById("in_estimated_checked").checked = true
+$("out_exact_checked").onchange = function(){
+  $("in_estimated_checked").checked = true
   disable_fields() };
-document.getElementById("out_estimated_checked").onchange = function(){
-  document.getElementById("in_exact_checked").checked = true 
+$("out_estimated_checked").onchange = function(){
+  $("in_exact_checked").checked = true 
   disable_fields() };
 
 // update on token quantity changes
-document.getElementById("in_token_id").onchange = function(){compute_qty()}
-document.getElementById("send_qty").onchange = function(){compute_qty()}
-document.getElementById("out_token_id").onchange = function(){compute_qty()}
-document.getElementById("rcv_qty").onchange = function(){compute_qty()}
+$("in_token_id").onchange = function(){compute_qty()}
+$("send_qty").onchange = function(){compute_qty()}
+$("out_token_id").onchange = function(){compute_qty()}
+$("rcv_qty").onchange = function(){compute_qty()}
 
-document.getElementById("addliqtokenid").onchange = function(){set_liq_token()}
+$("addliqtokenid").onchange = function(){set_liq_token()}
 })
 </script>
 
