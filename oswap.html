@@ -11,6 +11,7 @@ chain_endpoint = 'https://mainnet.telos.net'
 const swapcontract = 'oswapper1111'
 const esr_gen_base = 'https://cc42.xyz'
 
+// read table rows from a blockchain contract
 async function getRows(contract, table, scope) {
   const url = chain_endpoint + "/v1/chain/get_table_rows";
   const data ={ code: contract,
@@ -29,11 +30,15 @@ async function getRows(contract, table, scope) {
   return result.rows
 }
 
+// read balances in swap pool from blockchain
+// and report each balance as a row in text table
+// return value: text table
 async function poolstatus() {
   let t = ''
   let more = true
   let lowerbound = ""
   const url = chain_endpoint + "/v1/chain/get_table_rows";
+  // get list of assets from 'assetsa' table on blockchain
   try {
   while (more) {
     const data ={ code: swapcontract,
@@ -52,9 +57,13 @@ async function poolstatus() {
     }
     const dt = await response.json()
     //console.log(JSON.stringify(dt))
+    // handle pagination if more than 40 assets
     more = dt.more
     lowerbound = dt.next_key
-    
+
+    // get balances and convert to formatted text strings:
+    //   <id> <asset balance>  <weight>   <token contract>
+    //    1   123.6339 COINS   wt=0.4318   rainbowproto
     t += (await Promise.all(dt.rows.map(async (row)=>{ 
       bal = (await getRows(row.contract_name, 'accounts', swapcontract))
         .filter((e)=>e.balance.split(' ')[1]==row.symbol)
@@ -69,6 +78,7 @@ async function poolstatus() {
   }
 }
 
+// perform the token swap computation using values in document
 function compute_qty() {
     in_is_exact = $("in_exact_checked").checked
 
@@ -133,6 +143,8 @@ function compute_qty() {
 
 }
 
+// find the token in the asset list, and set field in document
+// returns regex match - rv[0]=asset row, rv[1]=contract 
 function set_token (tokenid, token_field_id, raise_alerts = false) {
     const re = new RegExp(`^\\s+${tokenid}.+ (\\S+)$`, 'm')
     ts = $("tokenlist").value
@@ -152,6 +164,7 @@ function set_liq_token() {
     set_token($("addliqtokenid").value, "addliqtoken")
 }
 
+// build qr code for transaction, using esrgen service
 async function makeQR(transaction) {
     if (transaction.actions.length == 0) { return }
     transaction.endpoint = chain_endpoint
@@ -174,6 +187,7 @@ async function makeQR(transaction) {
     }
 }
 
+// pseudorandom name for msig proposal
 function genProposalName() {
     var name = swapcontract.slice(0,6);
     for (let i=6; i<10; i++) {
@@ -183,8 +197,9 @@ function genProposalName() {
     return name;
 }
 
+// 3-step process to generate msig proposal
 async function makeMsigProposeQR(transaction, account, permission) {
-    // get account/permission signatories from chain
+    // MSIG step 1. get account/permission signatories from chain
     try {
       url = chain_endpoint + "/v1/chain/get_account";
       response = await fetch(url, {
@@ -205,12 +220,11 @@ async function makeMsigProposeQR(transaction, account, permission) {
       if( !Array.isArray(signers) || signers.length == 0) {
         throw new Error(`makemsig1: ${account} has no delegated msig signers`)
       }
-      // serialize inner transaction
+      // MSIG step 2. serialize inner transaction
       url = esr_gen_base + '/tx'
       response = await fetch(url, {
       method: 'POST', headers: {
         "Content-type": "application/json",
-   //     "dataType": "json",
       },
       body: JSON.stringify(transaction)
       })
@@ -219,7 +233,7 @@ async function makeMsigProposeQR(transaction, account, permission) {
       }
       data = await response.json();
       console.log(data);
-      // build msig propose with all signatories
+      // MSIG step 3. build msig propose with all signatories
       const duration_days = 3;
       var expiration = new Date();
       expiration.setDate(expiration.getDate() + duration_days);
@@ -266,7 +280,9 @@ function clearQR() {
     qrcode.innerHTML = ``;
 }
 
-// ACTION addliqprep(name account, uint64_t token_id, string amount, float weight);
+// Add liquidity
+// build tx; ACTION addliqprep(name account, uint64_t token_id, string amount, float weight)
+// then ACTION transfer()
 function addliq_trx() {
     let actions=[];
     // first action: addliqprep
@@ -303,7 +319,9 @@ function addliq_trx() {
     })
   return { actions: actions }
 }
-// ACTION withdraw(name account, uint64_t token_id, string amount, float weight);
+
+// Withdraw liquidity
+// build tx; ACTION withdraw(name account, uint64_t token_id, string amount, float weight)
 function withdraw_trx() {
     liqsource = $("liqsource").value
     let actions=[];
@@ -345,8 +363,10 @@ function addliqmsigQR() {
   makeMsigProposeQR(transaction, $("liqsource").value, "active");
 }
 
-//ACTION exprepfrom( name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
-//                   string in_amount, string memo);
+// Make swap exchange
+// build tx; ACTION exprepfrom( name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
+//                   string in_amount, string memo)
+// then ACTION transfer()
 function exchange_trx() {
     let actions=[];
     // first action: exprepfrom or exprepto
@@ -394,6 +414,7 @@ function exchange_trx() {
     }
     // second action: token transfer
     quantity = $("send_qty").value
+    memo_extension = ""
     if(!$("exch_tol").disabled) {
       const regex = /[0-9.]+/
       const amt = quantity.match(regex)[0]
@@ -403,6 +424,8 @@ function exchange_trx() {
         precision = sp[1].length
       }
       flt = parseFloat(amt)*(100.0 + parseFloat($("exch_tol").value))/100.0
+      memo_extension = 
+        ` (${$("exch_tol").value}% margin on ${quantity} ${$("send_token").value})`
       quantity = quantity.replace(regex, flt.toFixed(precision))
     }
     actions.push({
@@ -411,7 +434,7 @@ function exchange_trx() {
         from: send_acct,
         to: swapcontract,
         quantity: `${quantity} ${$("send_token").value}`,
-        memo: `swap for ${$("rcv_qty").value} ${$("rcv_token").value}`
+        memo: `swap for ${$("rcv_qty").value} ${$("rcv_token").value}`+memo_extension
       },
       authorization: [{actor: send_acct, permission: "active"}]
     })
@@ -441,6 +464,7 @@ async function update_assets() {
   $("tokenlist").value = await poolstatus();
 }
 
+// this function called when exact/extimated status changes
 function disable_fields() {
     in_exact = $("in_exact_checked").checked
     $("exch_tol").disabled = in_exact
@@ -520,6 +544,7 @@ Reference document <a href="https://docs.google.com/document/d/1bTmC7q4ZZ5mRnV9l
 . oSwaps contract repository <a href="https://github.com/chuck-h/oswaps-smart-contracts"> here</a>
 . This website repository <a href="https://github.com/chuck-h/oswapweb"> here</a>.
 <br><br>
+<!-- ---------------------- Pool Asset Block ----------------------------- -->
 <div>
 Assets in pool
 <input type="button" id="refresh_assets" value="Refresh" class="button"
@@ -530,23 +555,9 @@ Assets in pool
            value="" style="vertical-align:middle;"> </textarea>
 </div>
 <br>
+<!-- -------------- Exchange block --------------------- -->
 <div style="background-color:Cyan; border:1px solid black">
 <b>Exchange</b><br>
-  <label for="sender">Sender's account:</label>
-  <input type="text" id="sender" name="send" value="" > <br>
-  <label for="in_token_id">Token ID:</label>
-  <input type="text" id="in_token_id" name="sendtokenid" value="0" > <br>
-  <label for="send_qty">Quantity:</label>
-  <input type="text" id="send_qty" name="send" value="0.0000" style="width: 6em" > 
-  <input type="text" id="send_token" name="sendt" value="TOKEN"
-         style="width: 6em" disabled> <br>
-  <label for="exch_tol">Exchg rate tolerance %:</label>
-  <input type="text" id="exch_tol" name="sendtol" value="5" disabled > <br>
- 
-  <label for="in_exact_checked"><b>Input amount </b> Exact</label>
-  <input type="radio" id="in_exact_checked" name="in_exact" value="add" checked>
-  <label for="in_estimated_checked" class="radiolabelhoriz">Estimated</label>
-  <input type="radio" id="in_estimated_checked" name="in_exact" value="withdraw"> <br><br>
   <label for="recip">Recipient's account:</label>
   <input type="text" id="recip" name="rcv" value="" > <br>
   <label for="deliv_memo">Delivery memo:</label>
@@ -558,9 +569,25 @@ Assets in pool
   <input type="text" id="rcv_token" name="rcvt" value="TOKEN"
          style="width: 6em" disabled> <br>
   <label for="out_exact_checked"><b>Output amount </b> Exact</label>
-  <input type="radio" id="out_exact_checked" name="out_exact" value="add">
+  <input type="radio" id="out_exact_checked" name="out_exact" value="add" checked>
   <label for="out_estimated_checked" class="radiolabelhoriz">Estimated</label>
-  <input type="radio" id="out_estimated_checked" name="out_exact" value="withdraw" checked> <br><br>
+  <input type="radio" id="out_estimated_checked" name="out_exact" value="withdraw"> <br><br>
+  
+  <label for="sender">Sender's account:</label>
+  <input type="text" id="sender" name="send" value="" > <br>
+  <label for="in_token_id">Token ID:</label>
+  <input type="text" id="in_token_id" name="sendtokenid" value="0" > <br>
+  <label for="send_qty">Quantity:</label>
+  <input type="text" id="send_qty" name="send" value="0.0000" style="width: 6em" disabled > 
+  <input type="text" id="send_token" name="sendt" value="TOKEN"
+         style="width: 6em" disabled> <br>
+  <label for="exch_tol">Exchg rate margin %:</label>
+  <input type="text" id="exch_tol" name="sendtol" value="2" > <br>
+  <label for="in_exact_checked"><b>Input amount </b> Exact</label>
+  <input type="radio" id="in_exact_checked" name="in_exact" value="add" >
+  <label for="in_estimated_checked" class="radiolabelhoriz">Estimated</label>
+  <input type="radio" id="in_estimated_checked" name="in_exact" value="withdraw" checked> <br><br>
+ 
   <div id="button-wrapper">
     <input type="button" id="exchange_QR" value="Create QR" class="button">
     <input type="button" value="Clear QR" onclick="clearQR()" class="button">
@@ -569,6 +596,7 @@ Assets in pool
 </div>
 <div id=qrcode> </div>
 <br>
+<!-- -------------------- Liquidity Block ---------------------------- -->
 <div style="background-color:Aquamarine; border:1px solid black">
   <label for="addliq_checked"><b>Liquidity: </b> Add</label>
   <input type="radio" id="addliq_checked" name="liquidity" value="add" checked>
