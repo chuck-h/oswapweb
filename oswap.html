@@ -425,7 +425,7 @@ function exchange_trx() {
       }
       flt = parseFloat(amt)*(100.0 + parseFloat($("exch_tol").value))/100.0
       memo_extension = 
-        ` (${$("exch_tol").value}% margin on ${quantity} ${$("send_token").value})`
+        ` (sending ${quantity} ${$("send_token").value} + ${$("exch_tol").value}% margin)`
       quantity = quantity.replace(regex, flt.toFixed(precision))
     }
     actions.push({
@@ -434,7 +434,8 @@ function exchange_trx() {
         from: send_acct,
         to: swapcontract,
         quantity: `${quantity} ${$("send_token").value}`,
-        memo: `swap for ${$("rcv_qty").value} ${$("rcv_token").value}`+memo_extension
+        memo: `swap: ${$("rcv_qty").value} ${$("rcv_token").value} to ${$("recip").value}`
+          + memo_extension
       },
       authorization: [{actor: send_acct, permission: "active"}]
     })
@@ -613,7 +614,8 @@ Assets in pool
   <input type="text" id="addliqtoken" name="alt" value="TOKEN"
          style="width: 6em" disabled> <br>
   <label for="addliqwt">Weight:</label>
-  <input type="text" id="addliqwt" name="addliqwt" value="0.00" > <br><br>
+  <input type="text" id="addliqwt" name="addliqwt" value="0.00" > <br>
+  Note: setting non-zero weight will require manager to unfreeze<br><br>
   <div id="button-wrapper">
     <input type="button" id="addliq_QR" value="Create QR" class="button">
     <input type="button" value="Clear QR" onclick="clearQR()" class="button">
