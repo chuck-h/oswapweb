@@ -7,7 +7,7 @@
 function $(id) { return document.getElementById(id); };
 
 
-chain_endpoint = 'https://mainnet.telos.net'
+chain_endpoint = 'https://telos.caleos.io'
 const swapcontract = 'oswapper1111'
 const esr_gen_base = 'https://cc42.xyz'
 
@@ -34,7 +34,8 @@ async function getRows(contract, table, scope) {
 // and report each balance as a row in text table
 // return value: text table
 async function poolstatus() {
-  let t = ''
+  let t = ' id     balance       rel. value   weight      contract\n'
+  t +=    ' --- --------------- ------------ --------- -------------\n'
   let more = true
   let lowerbound = ""
   const url = chain_endpoint + "/v1/chain/get_table_rows";
@@ -61,15 +62,16 @@ async function poolstatus() {
     more = dt.more
     lowerbound = dt.next_key
 
+    // get reference asset data
+    ref_token_id = $("ref_asset").value;
+    ref_row = dt.rows.find((row)=>row.token_id==ref_token_id);
+    if (ref_row ) {
+      ref_bal = (await getRows(ref_row.contract_name, 'accounts', swapcontract))
+        .filter((e)=>e.balance.split(' ')[1]==ref_row.symbol);
+      ref_balance = (ref_bal.length > 0) ? parseFloat(ref_bal[0].balance.split(' ')[0]) : 0.0;
+    }
     // get balances and convert to formatted text strings:
-    //   <id> <asset balance>  <weight>   <token contract>
-    //    1   123.6339 COINS   wt=0.4318   rainbowproto
-    t += (await Promise.all(dt.rows.map(async (row)=>{ 
-      bal = (await getRows(row.contract_name, 'accounts', swapcontract))
-        .filter((e)=>e.balance.split(' ')[1]==row.symbol)
-      balance = ((bal.length > 0) ? bal[0].balance.split(' ')[0] : "0").padStart(8) + " " + row.symbol.padEnd(7);
-      return `${row.token_id.toString().padStart(4)} `+
-      `${balance} wt=${parseFloat(row.weight).toFixed(4)}   ${row.contract_name}\n`} ) ) ).join('')
+    t += (await Promise.all(dt.rows.map(async (row)=>status_line(row, ref_row, ref_balance) ) ) ).join('')
   }
   return t
   } catch (err) {
@@ -77,7 +79,30 @@ async function poolstatus() {
     console.log(err)
   }
 }
-
+// helper function for text row
+// get balances and convert to formatted text strings:
+//   <id> <asset balance>  <weight>   <token contract>
+//    1   123.6339 COINS   wt=0.4318   rainbowproto
+async function status_line(row, ref_row, ref_balance) {
+      bal = (await getRows(row.contract_name, 'accounts', swapcontract))
+        .filter((e)=>e.balance.split(' ')[1]==row.symbol)
+      balance = ((bal.length > 0) ? bal[0].balance.split(' ')[0] : "0").padStart(8) + " " + row.symbol.padEnd(7);
+      //  Qi tokens of type i will emit Qj = Qi * (Bj/Bi)*(Wi/Wj) tokens of type j.
+      numerical_balance = (bal.length > 0) ? parseFloat(bal[0].balance.split(' ')[0]) : 0.0;
+      //  Qi tokens of type i will emit Qj = Qi * (Bj/Bi)*(Wi/Wj) tokens of type j.
+      var ratio = "  ----  "; 
+      if (ref_balance > 0.0 && numerical_balance > 0.0) {
+        ratio = (ref_balance/numerical_balance * row.weight/ref_row.weight).toFixed(4);
+      }
+      ratio = ratio.padStart(8);
+      if (row == ref_row) {
+        ratio = `[${ratio}]`;
+      } else {
+        ratio = ` ${ratio} `;
+      }
+      return `${row.token_id.toString().padStart(4)} `+
+      `${balance} ${ratio.padStart(8)} ${parseFloat(row.weight).toFixed(4).padStart(8)}   ${row.contract_name}\n`
+}
 // perform the token swap computation using values in document
 function compute_qty() {
     in_is_exact = $("in_exact_checked").checked
@@ -165,7 +190,7 @@ function set_liq_token() {
 }
 
 // build qr code for transaction, using esrgen service
-async function makeQR(transaction) {
+async function makeQR(transaction, display_at = qrcode) {
     if (transaction.actions.length == 0) { return }
     transaction.endpoint = chain_endpoint
     try {
@@ -180,7 +205,7 @@ async function makeQR(transaction) {
       }
       const data = await response.json();
         console.log(data);
-      qrcode.innerHTML = `<img src=${data.qr}>`
+      display_at.innerHTML = `<img src=${data.qr}>`
     } catch (err) {
       alert(err.message)
       console.log(err)
@@ -198,7 +223,7 @@ function genProposalName() {
 }
 
 // 3-step process to generate msig proposal
-async function makeMsigProposeQR(transaction, account, permission) {
+async function makeMsigProposeQR(transaction, account, permission, display_at = qrcode) {
     // MSIG step 1. get account/permission signatories from chain
     try {
       url = chain_endpoint + "/v1/chain/get_account";
@@ -269,7 +294,7 @@ async function makeMsigProposeQR(transaction, account, permission) {
       }
       data = await response.json();
         console.log(data);
-      qrcode.innerHTML = `<img src=${data.qr}>`
+      display_at.innerHTML = `<img src=${data.qr}>`
     } catch (err) {
       alert(err.message)
       console.log(err)
@@ -279,6 +304,41 @@ async function makeMsigProposeQR(transaction, account, permission) {
 function clearQR() {
     qrcode.innerHTML = ``;
 }
+function clearQRnewasset() {
+    qrcode_upper.innerHTML = ``;
+    $("new_asset_block").style.display = "none";
+}
+
+// Add new asset
+// build tx; ACTION createasseta
+function newasset_trx(actor) {
+    let actions=[];
+    actions.push({
+      account: swapcontract, name: 'createasseta',
+      data: {
+        actor: actor,
+        chain: "Telos",
+        contract: $("newcontract").value,
+        symbol: $("newsymbol").value,
+        meta: "{}",
+      },
+      authorization: [{actor: actor, permission: "active"}]
+    })
+  return { actions: actions }
+}
+
+async function newassetQR() {
+  manager = (await getRows(swapcontract, 'configs', swapcontract))[0].manager;
+  transaction = newasset_trx(manager);
+  makeQR(transaction, qrcode_upper);
+}
+
+async function newassetmsigQR() {
+  manager = (await getRows(swapcontract, 'configs', swapcontract))[0].manager;
+  transaction = newasset_trx(manager);
+  makeMsigProposeQR(transaction, manager, "active", qrcode_upper);
+}
+
 
 // Add liquidity
 // build tx; ACTION addliqprep(name account, uint64_t token_id, string amount, float weight)
@@ -455,11 +515,6 @@ function exchangemsigQR() {
   makeMsigProposeQR(transaction, $("sender").value, "active");
 }
 
-function new_asset_redirect() {
-  if (window.confirm('New Asset window not implemented; use createasseta action. Click "ok" to visit block explorer')) {
-    window.location.href='https://eosauthority.com/account/oswapper1111?network=telos&action=createasseta&mode=contract&sub=actions';
-  };
-}
 
 async function update_assets() {
   $("tokenlist").value = await poolstatus();
@@ -481,10 +536,13 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 await update_assets()
 $("addliq_QR").onclick = function(){addliqQR()};
 $("refresh_assets").onclick = function(){update_assets()};
+$("ref_asset").onchange = function(){update_assets()};
 $("exchange_QR").onclick = function(){exchangeQR()};
 $("exchange_msig_propose_QR").onclick = function(){exchangemsigQR()};
 $("addliq_msig_propose_QR").onclick = function(){addliqmsigQR()};
-$("new_asset").onclick = function(){new_asset_redirect()}
+$("new_asset").onclick = function(){$("new_asset_block").style.display = "block"};
+$("newasset_QR").onclick = function(){newassetQR()};
+$("newasset_msig_propose_QR").onclick = function(){newassetmsigQR()};
 
 // cross-couple input_exact and output_exact radio buttons
 $("in_exact_checked").onchange = function(){
@@ -534,6 +592,7 @@ label {
   width: 6em;
   text-align: right;
 }
+
 </style>
 
 </head>
@@ -548,14 +607,33 @@ Reference document <a href="https://docs.google.com/document/d/1bTmC7q4ZZ5mRnV9l
 <!-- ---------------------- Pool Asset Block ----------------------------- -->
 <div>
 Assets in pool
+<label for="ref_asset">Ref. asset:</label>
+<input type="number" id="ref_asset" name="ref_asset" value="1"
+     min=1  style="width: 3em" > 
 <input type="button" id="refresh_assets" value="Refresh" class="button"
  style="margin-left: 20px">
 <input type="button" id="new_asset" value="New Asset" class="button"
   style="margin-left: 20px"><br>
-<textarea id="tokenlist" rows="10" cols = "50" name="tokenlist" 
+<textarea id="tokenlist" rows="10" cols = "58" name="tokenlist" 
            value="" style="vertical-align:middle;"> </textarea>
+<br>
 </div>
 <br>
+<!-- -----------------New Asset Block (collapsable)----------------------- -->
+<div id="new_asset_block" style="display:none; background-color:LightBlue; border:1px solid black">
+<b>Add new asset to pool</b><br>
+  <label for="newsymbol">Symbol:</label>
+  <input type="text" id="newsymbol" name="newsymbol" value="" > <br>
+  <label for="newcontract">Contract:</label>
+  <input type="text" id="newcontract" name="newcontract"> <br>
+  <div id="button-wrapper">
+    <input type="button" id="newasset_QR" value="Create QR" class="button">
+    <input type="button" value="Clear QR" onclick="clearQRnewasset()" class="button">
+    <input type="button" id="newasset_msig_propose_QR" value="Propose Msig" class="button">
+  </div>
+</div>
+<br>
+<div id=qrcode_upper> </div>
 <!-- -------------- Exchange block --------------------- -->
 <div style="background-color:Cyan; border:1px solid black">
 <b>Exchange</b><br>
