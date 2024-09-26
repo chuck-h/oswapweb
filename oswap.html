@@ -34,8 +34,8 @@ async function getRows(contract, table, scope) {
 // and report each balance as a row in text table
 // return value: text table
 async function poolstatus() {
-  let t = ' id     balance       rel. value   weight      contract\n'
-  t +=    ' --- --------------- ------------ --------- -------------\n'
+  let t = ' id     balance       rel. value   weight     contract   frz\n'
+  t +=    ' --- --------------- ------------ --------- ------------ ---\n'
   let more = true
   let lowerbound = ""
   const url = chain_endpoint + "/v1/chain/get_table_rows";
@@ -101,7 +101,8 @@ async function status_line(row, ref_row, ref_balance) {
         ratio = ` ${ratio} `;
       }
       return `${row.token_id.toString().padStart(4)} `+
-      `${balance} ${ratio.padStart(8)} ${parseFloat(row.weight).toFixed(4).padStart(8)}   ${row.contract_name}\n`
+      `${balance} ${ratio.padStart(8)} ${parseFloat(row.weight).toFixed(4).padStart(8)}` +
+      `   ${row.contract_name.padEnd(13)} ${row.active ? " " : "F"}\n`;
 }
 // perform the token swap computation using values in document
 function compute_qty() {
@@ -614,7 +615,7 @@ Assets in pool
  style="margin-left: 20px">
 <input type="button" id="new_asset" value="New Asset" class="button"
   style="margin-left: 20px"><br>
-<textarea id="tokenlist" rows="10" cols = "58" name="tokenlist" 
+<textarea id="tokenlist" rows="10" cols = "60" name="tokenlist" 
            value="" style="vertical-align:middle;"> </textarea>
 <br>
 </div>
