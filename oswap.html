@@ -34,7 +34,7 @@ async function getRows(contract, table, scope) {
 // and report each balance as a row in text table
 // return value: text table
 async function poolstatus() {
-  let t = ' id     balance       rel. value   weight     contract   frz\n'
+  let t = ' id     balance        eq. value   weight     contract   frz\n'
   t +=    ' --- --------------- ------------ --------- ------------ ---\n'
   let more = true
   let lowerbound = ""
@@ -91,8 +91,8 @@ async function status_line(row, ref_row, ref_balance) {
       numerical_balance = (bal.length > 0) ? parseFloat(bal[0].balance.split(' ')[0]) : 0.0;
       //  Qi tokens of type i will emit Qj = Qi * (Bj/Bi)*(Wi/Wj) tokens of type j.
       var ratio = "  ----  "; 
-      if (ref_balance > 0.0 && numerical_balance > 0.0) {
-        ratio = (ref_balance/numerical_balance * row.weight/ref_row.weight).toFixed(4);
+      if (ref_row && ref_balance > 0.0 && numerical_balance > 0.0) {
+        ratio = (numerical_balance/ref_balance * ref_row.weight/row.weight).toFixed(4);
       }
       ratio = ratio.padStart(8);
       if (row == ref_row) {
@@ -115,25 +115,24 @@ function compute_qty() {
           out_token = $("out_token_id").value,
           in_match = set_token(in_token, "send_token");
           out_match = set_token(out_token, "rcv_token");
-          out_bal_before = parseFloat(out_match[0].split(/\s+/)[2])
+          out_bal_before = parseFloat(out_match.balance)
           out_amount = parseFloat($("rcv_qty").value)
           out_bal_after = out_bal_before - out_amount
           if (out_bal_after <= 0) {
             alert("insufficient balance in pool")
           }
           lc = Math.log(out_bal_after/out_bal_before)
-          out_weight = parseFloat(out_match[0].split(/\s+/)[4].slice(3))
-          in_weight = parseFloat(in_match[0].split(/\s+/)[4].slice(3))
+          out_weight = parseFloat(out_match.weight)
+          in_weight = parseFloat(in_match.weight)
           lnc = -out_weight/in_weight * lc
           console.log(`in weight ${in_weight} ,  out_weight ${out_weight}`)
-          console.log(in_match[0].split(/\s+/)[2])
-          in_bal_before = parseFloat(in_match[0].split(/\s+/)[2])
+          in_bal_before = parseFloat(in_match.balance)
           in_bal_after = in_bal_before * Math.exp(lnc)
           computed_amt = in_bal_after - in_bal_before
           console.log(`computed input ${in_bal_before} + ${computed_amt} = ${in_bal_after}`)
           
           precision = 0
-          sp = in_match[0].split(/\s+/)[2].split('.')
+          sp = in_match.balance.split('.')
           if (sp.length == 2) {
             precision = sp[1].length
           }
@@ -147,20 +146,20 @@ function compute_qty() {
           out_token = $("out_token_id").value,
           in_match = set_token(in_token, "send_token");
           out_match = set_token(out_token, "rcv_token");
-          in_bal_before = parseFloat(in_match[0].split(/\s+/)[2])
+          in_bal_before = parseFloat(in_match.balance)
           in_amount = parseFloat($("send_qty").value)
           in_bal_after = in_bal_before + in_amount
           lc = Math.log(in_bal_after/in_bal_before)
-          out_weight = parseFloat(out_match[0].split(/\s+/)[4].slice(3))
-          in_weight = parseFloat(in_match[0].split(/\s+/)[4].slice(3))
+          out_weight = parseFloat(out_match.weight)
+          in_weight = parseFloat(in_match.weight)
           lnc = -in_weight/out_weight * lc
-          out_bal_before = parseFloat(out_match[0].split(/\s+/)[2])
+          out_bal_before = parseFloat(out_match.balance)
           out_bal_after = out_bal_before * Math.exp(lnc)
           computed_amt = out_bal_before - out_bal_after
           console.log(`computed output ${out_bal_before} - ${computed_amt} = ${out_bal_after}`)
 
           precision = 0
-          sp = out_match[0].split(/\s+/)[2].split('.')
+          sp = out_match.balance.split('.')
           if (sp.length == 2) {
             precision = sp[1].length
           }
@@ -170,20 +169,27 @@ function compute_qty() {
 }
 
 // find the token in the asset list, and set field in document
-// returns regex match - rv[0]=asset row, rv[1]=contract 
+// returns a map of field entries
 function set_token (tokenid, token_field_id, raise_alerts = false) {
-    const re = new RegExp(`^\\s+${tokenid}.+ (\\S+)$`, 'm')
+    const re = new RegExp(`^\\s+${tokenid} .+$`, 'm')
     ts = $("tokenlist").value
     const match = ts.match(re)
     if (match == null) {
       if (raise_alerts) {alert("Invalid Token ID") }
       return null
-    } 
-    asset_token = match[0].split(/\s+/)[3]
+    }
+    //console.log(`<${match[0].trim}>`)
+    splits = match[0].trim().replace('[',' ').replace(']', ' ').split(/\s+/);
+    asset_token = splits[2];
     $(token_field_id).value = asset_token
     // TODO set decimals?
-    console.log(match)
-    return match
+    return {
+      id: splits[0],
+      balance: splits[1],
+      token: splits[2],
+      weight: splits[4],
+      contract: splits[5],
+    }     
 }
 
 function set_liq_token() {
@@ -360,7 +366,6 @@ function addliq_trx() {
       },
       authorization: [{actor: source, permission: "active"}]
     })
-    
     match = set_token($("addliqtokenid").value,
                               "addliqtoken", true);
     if (match == null) {
@@ -368,7 +373,7 @@ function addliq_trx() {
     }
     // second action: token transfer
     actions.push({
-      account: match[1], name: 'transfer',
+      account: match.contract, name: 'transfer',
       data: {
         from: liqsource,
         to: swapcontract,
@@ -463,11 +468,6 @@ function exchange_trx() {
         authorization: [{actor: send_acct, permission: "active"}]
       })
     }
-    match = set_token($("out_token_id").value,
-                              "rcv_token", true);
-    if (match == null) {
-      return {actions: [] }
-    }
     match = set_token($("in_token_id").value,
                               "send_token", true);
     if (match == null) {
@@ -490,7 +490,7 @@ function exchange_trx() {
       quantity = quantity.replace(regex, flt.toFixed(precision))
     }
     actions.push({
-      account: match[1], name: 'transfer',
+      account: match.contract, name: 'transfer',
       data: {
         from: send_acct,
         to: swapcontract,
