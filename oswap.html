@@ -30,6 +30,7 @@ async function getRows(contract, table, scope) {
   return result.rows
 }
 
+var ref_balance;
 // read balances in swap pool from blockchain
 // and report each balance as a row in text table
 // return value: text table
@@ -65,13 +66,14 @@ async function poolstatus() {
     // get reference asset data
     ref_token_id = $("ref_asset").value;
     ref_row = dt.rows.find((row)=>row.token_id==ref_token_id);
+    ref_balance = null;
     if (ref_row ) {
       ref_bal = (await getRows(ref_row.contract_name, 'accounts', swapcontract))
         .filter((e)=>e.balance.split(' ')[1]==ref_row.symbol);
       ref_balance = (ref_bal.length > 0) ? parseFloat(ref_bal[0].balance.split(' ')[0]) : 0.0;
     }
     // get balances and convert to formatted text strings:
-    t += (await Promise.all(dt.rows.map(async (row)=>status_line(row, ref_row, ref_balance) ) ) ).join('')
+    t += (await Promise.all(dt.rows.map(async (row)=>status_line(row) ) ) ).join('')
   }
   return t
   } catch (err) {
@@ -79,31 +81,54 @@ async function poolstatus() {
     console.log(err)
   }
 }
+
+
 // helper function for text row
-// get balances and convert to formatted text strings:
-//   <id> <asset balance>  <weight>   <token contract>
-//    1   123.6339 COINS   wt=0.4318   rainbowproto
-async function status_line(row, ref_row, ref_balance) {
+// get balances and convert to formatted text strings (with dummy ratio):
+//   <id> <asset balance>  <ratio>  <weight> <token contract> <freeze>
+//    1   123.6339 COINS    ----      0.4318    rainbowproto
+async function status_line(row) {
       bal = (await getRows(row.contract_name, 'accounts', swapcontract))
         .filter((e)=>e.balance.split(' ')[1]==row.symbol)
       balance = ((bal.length > 0) ? bal[0].balance.split(' ')[0] : "0").padStart(8) + " " + row.symbol.padEnd(7);
-      //  Qi tokens of type i will emit Qj = Qi * (Bj/Bi)*(Wi/Wj) tokens of type j.
-      numerical_balance = (bal.length > 0) ? parseFloat(bal[0].balance.split(' ')[0]) : 0.0;
-      //  Qi tokens of type i will emit Qj = Qi * (Bj/Bi)*(Wi/Wj) tokens of type j.
-      var ratio = "  ----  "; 
-      if (ref_row && ref_balance > 0.0 && numerical_balance > 0.0) {
-        ratio = (numerical_balance/ref_balance * ref_row.weight/row.weight).toFixed(4);
-      }
-      ratio = ratio.padStart(8);
-      if (row == ref_row) {
-        ratio = `[${ratio}]`;
-      } else {
-        ratio = ` ${ratio} `;
-      }
       return `${row.token_id.toString().padStart(4)} `+
-      `${balance} ${ratio.padStart(8)} ${parseFloat(row.weight).toFixed(4).padStart(8)}` +
+      `${balance}    ----    ${parseFloat(row.weight).toFixed(4).padStart(8)}` +
       `   ${row.contract_name.padEnd(13)} ${row.active ? " " : "F"}\n`;
 }
+
+function set_ref() {
+  ref = $("ref_asset").value
+  const re = new RegExp(`^\\s+([0-9]+) +([0-9.]+) .+$`, 'm')
+  tl = "";
+  ts = $("tokenlist").value.split('\n');
+  ref_line = ts.find((line) => {
+    const m = line.match(re)
+    return m!=null && m[1]==ref});
+  if (ref_line) {
+    ref_balance = parseFloat(ref_line.substr(5,14))
+    ref_weight = parseFloat(ref_line.substr(32,42))
+  }
+  ts.forEach((line) => {
+    const match = line.match(re)
+    ll = line
+    if (match != null) {
+      ll = line.substring(0,23)
+      ll += (match[1] == ref) ? '[' : ' ';
+      var ratio = "  ---- "; 
+      numerical_balance = parseFloat(line.substr(5,14));
+      weight = parseFloat(line.substr(32,42));
+      if (ref_line && ref_balance > 0.0 && numerical_balance > 0.0) {
+        ratio = (numerical_balance/ref_balance * ref_weight/weight).toFixed(4);
+      }
+      ll += ratio.padStart(7);
+      ll += (match[1] == ref) ? ']' : ' ';
+      ll += line.substring(32)
+    }
+    tl += ll+'\n';
+  })
+  $("tokenlist").value = tl.substring(0,tl.length-1);
+}
+
 // perform the token swap computation using values in document
 function compute_qty() {
     in_is_exact = $("in_exact_checked").checked
@@ -115,28 +140,26 @@ function compute_qty() {
           out_token = $("out_token_id").value,
           in_match = set_token(in_token, "send_token");
           out_match = set_token(out_token, "rcv_token");
-          out_bal_before = parseFloat(out_match.balance)
+          if (in_match == null || out_match == null) {
+            return
+          }
+          out_bal_before = out_match.balance
           out_amount = parseFloat($("rcv_qty").value)
           out_bal_after = out_bal_before - out_amount
           if (out_bal_after <= 0) {
             alert("insufficient balance in pool")
           }
           lc = Math.log(out_bal_after/out_bal_before)
-          out_weight = parseFloat(out_match.weight)
-          in_weight = parseFloat(in_match.weight)
+          out_weight = out_match.weight
+          in_weight = in_match.weight
           lnc = -out_weight/in_weight * lc
-          console.log(`in weight ${in_weight} ,  out_weight ${out_weight}`)
-          in_bal_before = parseFloat(in_match.balance)
+          //console.log(`in weight ${in_weight} ,  out_weight ${out_weight}`)
+          in_bal_before = in_match.balance
           in_bal_after = in_bal_before * Math.exp(lnc)
           computed_amt = in_bal_after - in_bal_before
           console.log(`computed input ${in_bal_before} + ${computed_amt} = ${in_bal_after}`)
           
-          precision = 0
-          sp = in_match.balance.split('.')
-          if (sp.length == 2) {
-            precision = sp[1].length
-          }
-          $("send_qty").value = computed_amt.toFixed(precision)
+          $("send_qty").value = computed_amt.toFixed(in_match.precision)
           
         } else
 
@@ -146,24 +169,22 @@ function compute_qty() {
           out_token = $("out_token_id").value,
           in_match = set_token(in_token, "send_token");
           out_match = set_token(out_token, "rcv_token");
-          in_bal_before = parseFloat(in_match.balance)
+          if (in_match == null || out_match == null) {
+            return
+          }
+          in_bal_before = in_match.balance
           in_amount = parseFloat($("send_qty").value)
           in_bal_after = in_bal_before + in_amount
           lc = Math.log(in_bal_after/in_bal_before)
-          out_weight = parseFloat(out_match.weight)
-          in_weight = parseFloat(in_match.weight)
+          out_weight = out_match.weight
+          in_weight = in_match.weight
           lnc = -in_weight/out_weight * lc
-          out_bal_before = parseFloat(out_match.balance)
+          out_bal_before = out_match.balance
           out_bal_after = out_bal_before * Math.exp(lnc)
           computed_amt = out_bal_before - out_bal_after
           console.log(`computed output ${out_bal_before} - ${computed_amt} = ${out_bal_after}`)
 
-          precision = 0
-          sp = out_match.balance.split('.')
-          if (sp.length == 2) {
-            precision = sp[1].length
-          }
-          $("rcv_qty").value = computed_amt.toFixed(precision)
+          $("rcv_qty").value = computed_amt.toFixed(out_match.precision)
         }
 
 }
@@ -171,29 +192,37 @@ function compute_qty() {
 // find the token in the asset list, and set field in document
 // returns a map of field entries
 function set_token (tokenid, token_field_id, raise_alerts = false) {
-    const re = new RegExp(`^\\s+${tokenid} .+$`, 'm')
+    
+    const re = new RegExp(`^\\s+${parseInt(tokenid)} .+$`, 'm')
     ts = $("tokenlist").value
     const match = ts.match(re)
     if (match == null) {
       if (raise_alerts) {alert("Invalid Token ID") }
       return null
     }
-    //console.log(`<${match[0].trim}>`)
     splits = match[0].trim().replace('[',' ').replace(']', ' ').split(/\s+/);
     asset_token = splits[2];
-    $(token_field_id).value = asset_token
-    // TODO set decimals?
+    if (token_field_id) {
+      $(token_field_id).value = asset_token
+    }
+    precision = 0
+    sp = splits[1].split('.')
+    if (sp.length == 2) {
+      precision = sp[1].length
+    }
+    
     return {
-      id: splits[0],
-      balance: splits[1],
+      id: parseInt(splits[0]),
+      balance: parseFloat(splits[1]),
+      precision: precision,
       token: splits[2],
-      weight: splits[4],
+      weight: parseFloat(splits[4]),
       contract: splits[5],
     }     
 }
 
 function set_liq_token() {
-    set_token($("addliqtokenid").value, "addliqtoken")
+    set_token($("addliqtokenid").value, "addliqtoken",true)
 }
 
 // build qr code for transaction, using esrgen service
@@ -405,6 +434,33 @@ function withdraw_trx() {
   return { actions: actions }
 }
 
+async function update_ratioline() {
+  ref_data = set_token($("ref_asset").value, null)
+  liq_data = set_token($("addliqtokenid").value, "addliqtoken")
+  if (ref_data==null || liq_data==null || $("addliqqty").value==0.00
+    || ref_balance ==0) {
+    $("ratioline").value = "";
+    $("ratioline2").value = "";
+    return;
+  } 
+  if ($("ref_asset").value==$("addliqtokenid").value) {
+    ratio = 1.0.toFixed(4);
+    ratio2 = ratio;
+  } else {
+    new_balance = liq_data.balance + $("addliqqty").value * ($("addliq_checked").checked ? 1.0 : -1.0)
+    new_weight = $("addliqwt").value;
+    if (new_weight==0) {
+      new_weight = liq_data.weight * new_balance/liq_data.balance;
+    }
+    ratio = (ref_balance/new_balance * new_weight/ref_data.weight).toFixed(4);
+    ratio2 = (new_balance/ref_balance * ref_data.weight/new_weight).toFixed(4);
+  }  
+  line = `${ratio} ${ref_data.token}/${liq_data.token}`;
+  line2 = `${ratio2} ${liq_data.token}/${ref_data.token}`;
+  $("ratioline").value = line;
+  $("ratioline2").value = line2;
+}
+
 function addliqQR() {
   var transaction
   if($("addliq_checked").checked) {
@@ -519,6 +575,7 @@ function exchangemsigQR() {
 
 async function update_assets() {
   $("tokenlist").value = await poolstatus();
+  set_ref();
 }
 
 // this function called when exact/extimated status changes
@@ -537,7 +594,8 @@ document.addEventListener("DOMContentLoaded", async function(event) {
 await update_assets()
 $("addliq_QR").onclick = function(){addliqQR()};
 $("refresh_assets").onclick = function(){update_assets()};
-$("ref_asset").onchange = function(){update_assets()};
+$("refresh_liq").onclick = function(){update_assets(); update_ratioline();};
+$("ref_asset").onchange = function(){set_ref(); update_ratioline();};
 $("exchange_QR").onclick = function(){exchangeQR()};
 $("exchange_msig_propose_QR").onclick = function(){exchangemsigQR()};
 $("addliq_msig_propose_QR").onclick = function(){addliqmsigQR()};
@@ -564,8 +622,10 @@ $("in_token_id").onchange = function(){compute_qty()}
 $("send_qty").onchange = function(){compute_qty()}
 $("out_token_id").onchange = function(){compute_qty()}
 $("rcv_qty").onchange = function(){compute_qty()}
+$("addliqqty").onchange = function(){update_ratioline()}
+$("addliqwt").onchange = function(){update_ratioline()}
 
-$("addliqtokenid").onchange = function(){set_liq_token()}
+$("addliqtokenid").onchange = function(){set_liq_token(); update_ratioline()}
 })
 </script>
 
@@ -694,6 +754,13 @@ Assets in pool
          style="width: 6em" disabled> <br>
   <label for="addliqwt">Weight:</label>
   <input type="text" id="addliqwt" name="addliqwt" value="0.00" > <br>
+  <label for="ratioline">Resulting exch ratio</label>
+  <input type="text" id="ratioline"  value=""
+         disabled>
+  <input type="button" id="refresh_liq" value="Refresh" class="button" style="margin-left: 5px"><br>
+  <label for="ratioline2"> </label>
+  <input type="text" id="ratioline2"  value=""
+         disabled><br>
   Note: setting non-zero weight will require manager to unfreeze<br><br>
   <div id="button-wrapper">
     <input type="button" id="addliq_QR" value="Create QR" class="button">
