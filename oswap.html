@@ -35,8 +35,8 @@ var ref_balance;
 // and report each balance as a row in text table
 // return value: text table
 async function poolstatus() {
-  let t = ' id     balance        eq. value   weight     contract   frz\n'
-  t +=    ' --- --------------- ------------ --------- ------------ ---\n'
+  let t = ' id       balance          eq. value   weight     contract   frz\n'
+  t +=    ' --- -------------------- ----------- --------- ------------ ---\n'
   let more = true
   let lowerbound = ""
   const url = chain_endpoint + "/v1/chain/get_table_rows";
@@ -90,7 +90,7 @@ async function poolstatus() {
 async function status_line(row) {
       bal = (await getRows(row.contract_name, 'accounts', swapcontract))
         .filter((e)=>e.balance.split(' ')[1]==row.symbol)
-      balance = ((bal.length > 0) ? bal[0].balance.split(' ')[0] : "0").padStart(8) + " " + row.symbol.padEnd(7);
+      balance = ((bal.length > 0) ? bal[0].balance.split(' ')[0] : "0").padStart(12) + " " + row.symbol.padEnd(7);
       return `${row.token_id.toString().padStart(4)} `+
       `${balance}    ----    ${parseFloat(row.weight).toFixed(4).padStart(8)}` +
       `   ${row.contract_name.padEnd(13)} ${row.active ? " " : "F"}\n`;
@@ -105,24 +105,25 @@ function set_ref() {
     const m = line.match(re)
     return m!=null && m[1]==ref});
   if (ref_line) {
-    ref_balance = parseFloat(ref_line.substr(5,14))
-    ref_weight = parseFloat(ref_line.substr(32,42))
+    ref_balance = parseFloat(ref_line.substr(5,18))
+    ref_weight = parseFloat(ref_line.substr(36,46))
   }
   ts.forEach((line) => {
     const match = line.match(re)
     ll = line
     if (match != null) {
-      ll = line.substring(0,23)
+      ll = line.substring(0,27)
       ll += (match[1] == ref) ? '[' : ' ';
       var ratio = "  ---- "; 
-      numerical_balance = parseFloat(line.substr(5,14));
-      weight = parseFloat(line.substr(32,42));
+      numerical_balance = parseFloat(line.substr(5,18));
+      weight = parseFloat(line.substr(36,46));
+      console.log(`bal ${numerical_balance}, weight ${weight}`);
       if (ref_line && ref_balance > 0.0 && numerical_balance > 0.0) {
         ratio = (numerical_balance/ref_balance * ref_weight/weight).toFixed(4);
       }
       ll += ratio.padStart(7);
       ll += (match[1] == ref) ? ']' : ' ';
-      ll += line.substring(32)
+      ll += line.substring(36)
     }
     tl += ll+'\n';
   })
@@ -675,7 +676,7 @@ Assets in pool
  style="margin-left: 20px">
 <input type="button" id="new_asset" value="New Asset" class="button"
   style="margin-left: 20px"><br>
-<textarea id="tokenlist" rows="10" cols = "60" name="tokenlist" 
+<textarea id="tokenlist" rows="10" cols = "64" name="tokenlist" 
            value="" style="vertical-align:middle;"> </textarea>
 <br>
 </div>
