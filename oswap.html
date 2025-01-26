@@ -226,6 +226,7 @@ function set_liq_token() {
     set_token($("addliqtokenid").value, "addliqtoken",true)
 }
 
+var QREsr;
 // build qr code for transaction, using esrgen service
 async function makeQR(transaction, display_at = qrcode) {
     if (transaction.actions.length == 0) { return }
@@ -243,9 +244,19 @@ async function makeQR(transaction, display_at = qrcode) {
       const data = await response.json();
         console.log(data);
       display_at.innerHTML = `<img src=${data.qr}>`
+      QREsr = data.esr;
+      if(display_at==qrcode_upper) {
+        eosioto_upper.style.visibility = 'visible';
+      } else {
+        eosioto.style.visibility = 'visible';
+      }
+
     } catch (err) {
       alert(err.message)
       console.log(err)
+      QREsr = '';
+      eosioto.style.visibility = 'hidden';
+      eosioto_upper.style.visibility = 'hidden';
     }
 }
 
@@ -332,18 +343,32 @@ async function makeMsigProposeQR(transaction, account, permission, display_at = 
       data = await response.json();
         console.log(data);
       display_at.innerHTML = `<img src=${data.qr}>`
+      QREsr = data.esr;
+      if(display_at==qrcode_upper) {
+        eosioto_upper.style.visibility = 'visible';
+      } else {
+        eosioto.style.visibility = 'visible';
+      }
     } catch (err) {
       alert(err.message)
       console.log(err)
+      QREsr = '';
+      eosioto.style.visibility = 'hidden';
+      eosioto_upper.style.visibility = 'hidden';
     }
 }
 
 function clearQR() {
     qrcode.innerHTML = ``;
+    QREsr = '';
+    eosioto.style.visibility = 'hidden';
+    eosioto_upper.style.visibility = 'hidden';
 }
 function clearQRnewasset() {
     qrcode_upper.innerHTML = ``;
     $("new_asset_block").style.display = "none";
+    QREsr = '';
+    eosioto_upper.style.visibility = 'hidden';
 }
 
 // Add new asset
@@ -603,6 +628,10 @@ $("addliq_msig_propose_QR").onclick = function(){addliqmsigQR()};
 $("new_asset").onclick = function(){$("new_asset_block").style.display = "block"};
 $("newasset_QR").onclick = function(){newassetQR()};
 $("newasset_msig_propose_QR").onclick = function(){newassetmsigQR()};
+$("eosioto").onclick = function(){
+  window.open(QREsr.replace("esr://", "https://eosio.to/"),'_blank')};
+$("eosioto_upper").onclick = function(){
+  window.open(QREsr.replace("esr://", "https://eosio.to/"),'_blank')};
 
 // cross-couple input_exact and output_exact radio buttons
 $("in_exact_checked").onchange = function(){
@@ -696,6 +725,7 @@ Assets in pool
 </div>
 <br>
 <div id=qrcode_upper> </div>
+<input type="button" id="eosioto_upper" value="Transaction Link" class="button" style="visibility:hidden;"> 
 <!-- -------------- Exchange block --------------------- -->
 <div style="background-color:Cyan; border:1px solid black">
 <b>Exchange</b><br>
@@ -736,7 +766,8 @@ Assets in pool
   </div>
 </div>
 <div id=qrcode> </div>
-<br>
+<input type="button" id="eosioto" value="Transaction Link" class="button" style="visibility:hidden;">  
+<br><br>
 <!-- -------------------- Liquidity Block ---------------------------- -->
 <div style="background-color:Aquamarine; border:1px solid black">
   <label for="addliq_checked"><b>Liquidity: </b> Add</label>
